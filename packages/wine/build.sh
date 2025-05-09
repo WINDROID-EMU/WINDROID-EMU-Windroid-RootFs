@@ -1,50 +1,76 @@
-PKG_VER="10.1-9-esync-xinput-apc-patch"
-PKG_CATEGORY="Wine"
-PKG_PRETTY_NAME="Wine ($PKG_VER)"
+# — PKGBUILD —
+pkgname=wine-esync-xinput-apc
+pkgver=10.1-9
+pkgrel=1
+pkgdesc="Wine with esync, xinput and APC patches"
+arch=('i686' 'x86_64')
+url="https://github.com/KreitinnSoftware/wine"
+license=('LGPL')
+depends=('wine-mono' 'vulkan-icd-loader' 'libpulse' 'gstreamer' 'gnutls' 'libx11' 'libxrandr' 'libxrender' 'libxinerama' 'libxcursor' 'libxi')
+makedepends=('git' 'flex' 'bison' 'mingw-w64-gcc' 'gcc-libs' 'libxcb' 'libx11' 'libxext')
+provides=('wine')
+conflicts=('wine')
+  
+# fonte: repo + patches locais
+source=(
+  "git+${GIT_URL}#commit=${GIT_COMMIT}"
+  "0001-ntdll-APC-Performance.patch"
+  "0001-wined3d-Use-UBO-for-vertex-shader-float-constants-if.patch"
+)
+sha256sums=('SKIP'  # git
+            'e3b0c44298fc1c149afbf4c8996fb924…'  # ajustar com sha256 reais
+            'd41d8cd98f00b204e9800998ecf8427e…')
 
-BLACKLIST_ARCH=aarch64
+prepare() {
+  cd "$srcdir/wine"
 
-GIT_URL=https://github.com/KreitinnSoftware/wine
-GIT_COMMIT=36b176851ffce636fc052fab773fb2be8990fe5c
-HOST_BUILD_CONFIGURE_ARGS="--enable-win64 --without-x"
-HOST_BUILD_FOLDER="$INIT_DIR/workdir/$package/wine-tools"
-HOST_BUILD_MAKE="make -j $(nproc) __tooldeps__ nls/all"
-OVERRIDE_PREFIX="$(realpath $PREFIX/../wine)"
-CONFIGURE_ARGS="--enable-archs=i386,x86_64 \
-				--host=$TOOLCHAIN_TRIPLE \
-				--with-wine-tools=$INIT_DIR/workdir/$package/wine-tools \
-				--prefix=$OVERRIDE_PREFIX \
-				--without-oss \
-				--disable-winemenubuilder \
-				--disable-win16 \
-				--disable-tests \
-				--with-x \
-				--x-libraries=$PREFIX/lib \
-				--x-includes=$PREFIX/include \
-				--with-pulse \
-				--with-gstreamer \
-				--with-opengl \
-				--with-gnutls \
-				--with-mingw=gcc \
-				--with-xinput \
-				--with-xinput2 \
-				--enable-nls \
-				--without-xshm \
-				--without-xxf86vm \
-				--without-osmesa \
-				--without-usb \
-				--without-sdl \
-				--without-cups \
-				--without-netapi \
-				--without-pcap \
-				--without-gphoto \
-				--without-v4l2 \
-				--without-pcsclite \
-				--without-wayland \
-				--without-opencl \
-				--without-dbus \
-				--without-sane \
-				--without-udev \
-				--without-capi \
-				--enable-staging \
-				--with-patch-options=-f -s"
+  # aplica com fuzz=3 para tentar encaixar pequenas divergências
+  patch -p1 --fuzz=3 < "$srcdir/0001-ntdll-APC-Performance.patch"
+  patch -p1 --fuzz=3 < "$srcdir/0001-wined3d-Use-UBO-for-vertex-shader-float-constants-if.patch"
+}
+
+build() {
+  cd "$srcdir/wine"
+  ./configure \
+    --enable-archs=i386,x86_64 \
+    --host="$TOOLCHAIN_TRIPLE" \
+    --prefix="${OVERRIDE_PREFIX}" \
+    --with-wine-tools="$srcdir/wine-tools" \
+    --without-oss \
+    --disable-winemenubuilder \
+    --disable-win16 \
+    --disable-tests \
+    --with-x \
+    --x-libraries="$PREFIX/lib" \
+    --x-includes="$PREFIX/include" \
+    --with-pulse \
+    --with-gstreamer \
+    --with-opengl \
+    --with-gnutls \
+    --with-mingw=gcc \
+    --with-xinput \
+    --with-xinput2 \
+    --enable-nls \
+    --without-usb \
+    --without-sdl \
+    --without-cups \
+    --without-netapi \
+    --without-pcap \
+    --without-gphoto \
+    --without-v4l2 \
+    --without-pcsclite \
+    --without-wayland \
+    --without-opencl \
+    --without-dbus \
+    --without-sane \
+    --without-udev \
+    --without-capi \
+    --enable-staging \
+    --with-patch-options='-f -s'
+  make -j"$(nproc)"
+}
+
+package() {
+  cd "$srcdir/wine"
+  make DESTDIR="$pkgdir" install
+}
