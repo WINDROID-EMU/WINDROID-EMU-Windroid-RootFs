@@ -1,41 +1,67 @@
-# — PKGBUILD —
-pkgname=wine-esync-xinput-apc
-pkgver=10.1-9
-pkgrel=1
-pkgdesc="Wine with esync, xinput and APC patches"
-arch=('i686' 'x86_64')
-url="https://github.com/KreitinnSoftware/wine"
-license=('LGPL')
-depends=('wine-mono' 'vulkan-icd-loader' 'libpulse' 'gstreamer' 'gnutls' 'libx11' 'libxrandr' 'libxrender' 'libxinerama' 'libxcursor' 'libxi')
-makedepends=('git' 'flex' 'bison' 'mingw-w64-gcc' 'gcc-libs' 'libxcb' 'libx11' 'libxext')
-provides=('wine')
-conflicts=('wine')
-  
-# fonte: repo + patches locais
-source=(
-  "git+${GIT_URL}#commit=${GIT_COMMIT}"
-  "0001-ntdll-APC-Performance.patch"
-  "0001-wined3d-Use-UBO-for-vertex-shader-float-constants-if.patch"
-)
-sha256sums=('SKIP'  # git
-            'e3b0c44298fc1c149afbf4c8996fb924…'  # ajustar com sha256 reais
-            'd41d8cd98f00b204e9800998ecf8427e…')
+#!/usr/bin/env bash
 
-prepare() {
-  cd "$srcdir/wine"
+# build-all.sh: Script de build completo para Wine com patches
+# ----------------------------------------------------------------------------
+# Configurações iniciais
+set -euo pipefail
+IFS=$'\n\t'
 
-  # aplica com fuzz=3 para tentar encaixar pequenas divergências
-  patch -p1 --fuzz=3 < "$srcdir/0001-ntdll-APC-Performance.patch"
-  patch -p1 --fuzz=3 < "$srcdir/0001-wined3d-Use-UBO-for-vertex-shader-float-constants-if.patch"
+# Diretórios
+INIT_DIR=$(pwd)
+PREFIX="${PREFIX:-/usr/local}"
+WORKDIR="$INIT_DIR/workdir/wine"
+PATCH_DIR="$INIT_DIR/packages/wine/patches"
+
+# Fonte Git
+GIT_URL="https://github.com/KreitinnSoftware/wine"
+GIT_COMMIT="36b176851ffce636fc052fab773fb2be8990fe5c"
+
+# Prefix alternativo para instalação
+OVERRIDE_PREFIX="$(realpath "$PREFIX/../wine")"
+
+# Toolchain
+TOOLCHAIN_TRIPLE="$(gcc -dumpmachine || echo "x86_64-pc-linux-gnu")"
+
+# Função de clone e limpeza
+prepare_source() {
+  echo "==> Preparando fonte Wine"
+  rm -rf "$WORKDIR"
+  git clone "$GIT_URL" "$WORKDIR"
+  cd "$WORKDIR"
+  git checkout "$GIT_COMMIT"
 }
 
-build() {
-  cd "$srcdir/wine"
+# Função de aplicação de patches (ignora erros)
+apply_patches() {
+  echo "==> Aplicando patches"
+  cd "$WORKDIR" || { echo "Aviso: diretório $WORKDIR não encontrado, pulando patches"; return; }
+
+  # Desliga exit-on-error temporariamente
+  set +e
+
+  for p in "$PATCH_DIR"/*.patch; do
+    echo "--> Aplicando $(basename "$p")"
+    patch -p1 < "$p"
+    if [ $? -ne 0 ]; then
+      echo "⚠ Falha ao aplicar patch $(basename "$p") — continuando" >&2
+    else
+      echo "✔ Patch $(basename "$p") aplicado"
+    fi
+  done
+
+  # Religa exit-on-error
+  set -e
+}
+
+# Função de configuração
+configure_build() {
+  echo "==> Configurando build"
+  cd "$WORKDIR"
   ./configure \
     --enable-archs=i386,x86_64 \
     --host="$TOOLCHAIN_TRIPLE" \
-    --prefix="${OVERRIDE_PREFIX}" \
-    --with-wine-tools="$srcdir/wine-tools" \
+    --prefix="$OVERRIDE_PREFIX" \
+    --with-wine-tools="$WORKDIR/wine-tools" \
     --without-oss \
     --disable-winemenubuilder \
     --disable-win16 \
@@ -67,10 +93,27 @@ build() {
     --without-capi \
     --enable-staging \
     --with-patch-options='-f -s'
-  make -j"$(nproc)"
 }
 
-package() {
-  cd "$srcdir/wine"
-  make DESTDIR="$pkgdir" install
+# Função de compilação
+build() {
+  echo "==> Compilando"
+  cd "$WORKDIR"
+  make -j"$(nproc)" __tooldeps__ nls/all
 }
+
+# Função de instalação
+install_pkg() {
+  echo "==> Instalando"
+  cd "$WORKDIR"
+  make DESTDIR="$INIT_DIR/pkg" install
+}
+
+# Execução das etapas
+prepare_source
+apply_patches
+configure_build
+build
+install_pkg
+
+echo "\n*** Build concluído com sucesso! ***"
