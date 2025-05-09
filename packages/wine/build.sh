@@ -46,4 +46,5 @@ CONFIGURE_ARGS="--enable-archs=i386,x86_64 \
 				--without-sane \
 				--without-udev \
 				--without-capi \
-				--enable-staging"
+				--enable-staging \
+				--with-patch-options=-f -s"
