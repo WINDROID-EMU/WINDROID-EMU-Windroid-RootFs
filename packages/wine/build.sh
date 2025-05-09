@@ -1,119 +1,100 @@
 #!/usr/bin/env bash
 
-# build-all.sh: Script de build completo para Wine com patches
-# ----------------------------------------------------------------------------
-# Configurações iniciais
-set -euo pipefail
-IFS=$'\n\t'
+PKG_VER="10.1-9-esync-xinput-apc-patch"
+PKG_CATEGORY="Wine"
+PKG_PRETTY_NAME="Wine ($PKG_VER)"
 
-# Diretórios
-INIT_DIR=$(pwd)
-PREFIX="${PREFIX:-/usr/local}"
-WORKDIR="$INIT_DIR/workdir/wine"
+BLACKLIST_ARCH=aarch64
+
+GIT_URL="https://github.com/KreitinnSoftware/wine"
+GIT_COMMIT=36b176851ffce636fc052fab773fb2be8990fe5c
+
+HOST_BUILD_CONFIGURE_ARGS="--enable-win64 --without-x"
+HOST_BUILD_FOLDER="$INIT_DIR/workdir/$package/wine-tools"
+HOST_BUILD_MAKE="make -j $(nproc) __tooldeps__ nls/all"
+OVERRIDE_PREFIX="$(realpath $PREFIX/../wine)"
+
+# Onde estão os patches (local ou remoto já baixado em $SRC_DIR)
 PATCH_DIR="$INIT_DIR/packages/wine/patches"
 
-# Fonte Git
-GIT_URL="https://github.com/KreitinnSoftware/wine"
-GIT_COMMIT="36b176851ffce636fc052fab773fb2be8990fe5c"
+CONFIGURE_ARGS="--enable-archs=i386,x86_64 \
+                --host=$TOOLCHAIN_TRIPLE \
+                --with-wine-tools=$INIT_DIR/workdir/$package/wine-tools \
+                --prefix=$OVERRIDE_PREFIX \
+                --without-oss \
+                --disable-winemenubuilder \
+                --disable-win16 \
+                --disable-tests \
+                --with-x \
+                --x-libraries=$PREFIX/lib \
+                --x-includes=$PREFIX/include \
+                --with-pulse \
+                --with-gstreamer \
+                --with-opengl \
+                --with-gnutls \
+                --with-mingw=gcc \
+                --with-xinput \
+                --with-xinput2 \
+                --enable-nls \
+                --without-xshm \
+                --without-xxf86vm \
+                --without-osmesa \
+                --without-usb \
+                --without-sdl \
+                --without-cups \
+                --without-netapi \
+                --without-pcap \
+                --without-gphoto \
+                --without-v4l2 \
+                --without-pcsclite \
+                --without-wayland \
+                --without-opencl \
+                --without-dbus \
+                --without-sane \
+                --without-udev \
+                --without-capi \
+                --enable-staging \
+                --with-patch-options=-f -s"
 
-# Prefix alternativo para instalação
-OVERRIDE_PREFIX="$(realpath "$PREFIX/../wine")"
+prepare() {
+  cd "$SRC_DIR/wine" || exit 0
 
-# Toolchain
-TOOLCHAIN_TRIPLE="$(gcc -dumpmachine || echo "x86_64-pc-linux-gnu")"
-
-# Função de clone e limpeza
-prepare_source() {
-  echo "==> Preparando fonte Wine"
-  rm -rf "$WORKDIR"
-  git clone "$GIT_URL" "$WORKDIR"
-  cd "$WORKDIR"
-  git checkout "$GIT_COMMIT"
-}
-
-# Função de aplicação de patches (ignora erros)
-apply_patches() {
-  echo "==> Aplicando patches"
-  cd "$WORKDIR" || { echo "Aviso: diretório $WORKDIR não encontrado, pulando patches"; return; }
-
-  # Desliga exit-on-error temporariamente
+  echo "==> Aplicando patches (erros serão ignorados)"
+  # Desativa exit-on-error neste bloco
   set +e
 
   for p in "$PATCH_DIR"/*.patch; do
-    echo "--> Aplicando $(basename "$p")"
+    echo "--> $(basename "$p")"
     patch -p1 < "$p"
     if [ $? -ne 0 ]; then
-      echo "⚠ Falha ao aplicar patch $(basename "$p") — continuando" >&2
+      echo "⚠ Falha ao aplicar $(basename "$p") — continuando..."
     else
       echo "✔ Patch $(basename "$p") aplicado"
     fi
   done
 
-  # Religa exit-on-error
+  # Reativa exit-on-error
   set -e
 }
 
-# Função de configuração
-configure_build() {
-  echo "==> Configurando build"
-  cd "$WORKDIR"
-  ./configure \
-    --enable-archs=i386,x86_64 \
-    --host="$TOOLCHAIN_TRIPLE" \
-    --prefix="$OVERRIDE_PREFIX" \
-    --with-wine-tools="$WORKDIR/wine-tools" \
-    --without-oss \
-    --disable-winemenubuilder \
-    --disable-win16 \
-    --disable-tests \
-    --with-x \
-    --x-libraries="$PREFIX/lib" \
-    --x-includes="$PREFIX/include" \
-    --with-pulse \
-    --with-gstreamer \
-    --with-opengl \
-    --with-gnutls \
-    --with-mingw=gcc \
-    --with-xinput \
-    --with-xinput2 \
-    --enable-nls \
-    --without-usb \
-    --without-sdl \
-    --without-cups \
-    --without-netapi \
-    --without-pcap \
-    --without-gphoto \
-    --without-v4l2 \
-    --without-pcsclite \
-    --without-wayland \
-    --without-opencl \
-    --without-dbus \
-    --without-sane \
-    --without-udev \
-    --without-capi \
-    --enable-staging \
-    --with-patch-options='-f -s'
-}
-
-# Função de compilação
 build() {
-  echo "==> Compilando"
-  cd "$WORKDIR"
-  make -j"$(nproc)" __tooldeps__ nls/all
+  prepare
+
+  cd "$SRC_DIR/wine"
+
+  # Build host tools
+  mkdir -p "$HOST_BUILD_FOLDER"
+  cd "$HOST_BUILD_FOLDER"
+  eval $HOST_BUILD_CONFIGURE_ARGS
+  $HOST_BUILD_MAKE
+
+  # Build Wine
+  cd "$SRC_DIR/wine"
+  ./configure $CONFIGURE_ARGS
+  make -j"$(nproc)"
 }
 
-# Função de instalação
-install_pkg() {
-  echo "==> Instalando"
-  cd "$WORKDIR"
-  make DESTDIR="$INIT_DIR/pkg" install
+package() {
+  cd "$SRC_DIR/wine"
+  make DESTDIR="$pkgdir" install
 }
-
-# Execução das etapas
-prepare_source
-apply_patches
-configure_build
-build
-install_pkg
-
-echo "\n*** Build concluído com sucesso! ***"
