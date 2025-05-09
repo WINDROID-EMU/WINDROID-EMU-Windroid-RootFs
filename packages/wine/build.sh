@@ -1,4 +1,4 @@
-PKG_VER="10.1-9-esync-xinput"
+PKG_VER="10.1-9-esync-xinput-apc-patch"
 PKG_CATEGORY="Wine"
 PKG_PRETTY_NAME="Wine ($PKG_VER)"
 
@@ -28,7 +28,7 @@ CONFIGURE_ARGS="--enable-archs=i386,x86_64 \
 				--with-mingw=gcc \
 				--with-xinput \
 				--with-xinput2 \
-    				--enable-nls \
+				--enable-nls \
 				--without-xshm \
 				--without-xxf86vm \
 				--without-osmesa \
@@ -45,4 +45,5 @@ CONFIGURE_ARGS="--enable-archs=i386,x86_64 \
 				--without-dbus \
 				--without-sane \
 				--without-udev \
-				--without-capi"
+				--without-capi \
+				--enable-staging"
