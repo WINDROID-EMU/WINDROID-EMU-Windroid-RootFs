@@ -14,7 +14,7 @@ HOST_BUILD_FOLDER="$INIT_DIR/workdir/$package/wine-tools"
 HOST_BUILD_MAKE="make -j $(nproc) __tooldeps__ nls/all"
 OVERRIDE_PREFIX="$(realpath $PREFIX/../wine)"
 
-# Onde estão os patches (local ou remoto já baixado em $SRC_DIR)
+# Diretório dos patches
 PATCH_DIR="$INIT_DIR/packages/wine/patches"
 
 CONFIGURE_ARGS="--enable-archs=i386,x86_64 \
@@ -59,22 +59,18 @@ CONFIGURE_ARGS="--enable-archs=i386,x86_64 \
 prepare() {
   cd "$SRC_DIR/wine" || exit 0
 
-  echo "==> Aplicando patches (erros serão ignorados)"
-  # Desativa exit-on-error neste bloco
-  set +e
+  echo "==> Aplicando patches (só os que passarem no dry-run)"
 
   for p in "$PATCH_DIR"/*.patch; do
-    echo "--> $(basename "$p")"
-    patch -p1 < "$p"
-    if [ $? -ne 0 ]; then
-      echo "⚠ Falha ao aplicar $(basename "$p") — continuando..."
+    echo "--> Testando $(basename "$p")"
+    # Dry-run para verificar se aplica sem rejeição
+    if patch --dry-run -p1 < "$p" >/dev/null 2>&1; then
+      echo "✔ Aplicando $(basename "$p")"
+      patch -p1 < "$p"
     else
-      echo "✔ Patch $(basename "$p") aplicado"
+      echo "⚠ Pulando $(basename "$p") — não aplicável ao código atual"
     fi
   done
-
-  # Reativa exit-on-error
-  set -e
 }
 
 build() {
